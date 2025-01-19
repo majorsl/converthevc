@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.1 *See README.md for requirements*
+# Version 1.1.1 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -36,9 +36,14 @@ do
     # Start constructing the map_str for video and subtitle streams
     map_str=()
     map_str+=("-map" "0:v")  # Always map video streams
-    map_str+=("-map" "0:s")  # Always map subtitle streams
 
-    # Loop through each stream and add it to map_str for audio
+    # Check if there are subtitle streams and map them if they exist
+    subtitle_streams=$("$FFMPEG/ffprobe" -v error -select_streams s -show_entries stream=index -of default=noprint_wrappers=1:nokey=1 "$file")
+    if [ -n "$subtitle_streams" ]; then
+      map_str+=("-map" "0:s")  # Add subtitle streams only if they exist
+    fi
+
+    # Loop through each audio stream and add it to map_str
     track_num=0
     while read -r line; do
       acodec=$(echo "$line" | cut -d' ' -f1)
