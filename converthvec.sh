@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.1.1 *See README.md for requirements*
+# Version 1.1.2 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -11,7 +11,7 @@ IFS=$'\n'
 if [ -n "$1" ]; then
   WORKINGDIRECTORY="$1"
 else
-  echo "Please call the script with a trailing directory part to process."
+  echo "Please call the script with a trailing directory to process."
   exit 1
 fi
 
@@ -58,7 +58,7 @@ do
     done <<< "$file_info"
 
     # Prepare the new file name for output
-    newfile="${file%.*}-HEVC.mkv"
+    newfile="${file%.*}.mkv"
 
     echo "Converting video stream of $file to HEVC (H.265)..."
 
