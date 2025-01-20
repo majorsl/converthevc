@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.1.2 *See README.md for requirements*
+# Version 1.1.3 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -72,8 +72,6 @@ do
       # Remove the original file
       rm "$file"
 
-      # Rename the new file to replace the original
-      mv "$newfile" "$file"
     else
       echo "Conversion failed for $file. Original file remains unchanged."
     fi
