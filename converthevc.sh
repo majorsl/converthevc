@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.1.3 *See README.md for requirements*
+# Version 1.1.4 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -21,7 +21,7 @@ if [ ! -d "$WORKINGDIRECTORY" ]; then
 fi
 
 # Process various video formats
-find "$WORKINGDIRECTORY" -type f \( -iname "*.webm" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.MOV" -o -iname "*.wmv" -o -iname "*.asf" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.flv" -o -iname "*.3gp" \) -print0 | while IFS= read -r -d '' file
+find "$WORKINGDIRECTORY" -type f \( -iname "*.avc" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.MOV" -o -iname "*.wmv" -o -iname "*.asf" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.flv" -o -iname "*.3gp" \) -print0 | while IFS= read -r -d '' file
 do
   echo "Processing $file"
   
@@ -57,23 +57,24 @@ do
 
     done <<< "$file_info"
 
-    # Prepare the new file name for output
-    newfile="${file%.*}.mkv"
+    # Prepare the new file name for output with a temporary name but always with .mkv extension
+    temp_newfile="${file%.*}.tmp.mkv"
 
     echo "Converting video stream of $file to HEVC (H.265)..."
 
     # Perform the conversion with ffmpeg (video to HEVC, audio and subtitle streams remain unchanged)
-    "$FFMPEG/ffmpeg" -i "$file" "${map_str[@]}" -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 28 "$newfile"
+    "$FFMPEG/ffmpeg" -i "$file" "${map_str[@]}" -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 28 "$temp_newfile"
 
     # Check if ffmpeg command succeeded
     if [ $? -eq 0 ]; then
-      echo "Conversion successful, removing original file and replacing with new one."
-
-      # Remove the original file
+      echo "Conversion successful, replacing the original file with the new one."
       rm "$file"
+      mv "$temp_newfile" "${file%.*}.mkv"
 
     else
       echo "Conversion failed for $file. Original file remains unchanged."
+      # Remove the temporary file if conversion failed
+      rm "$temp_newfile"
     fi
   else
     echo "File $file already has HEVC video, skipping conversion."
