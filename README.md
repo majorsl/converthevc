@@ -1,4 +1,4 @@
-# converthvec
+# converthevc
  A script that will convert a variety of video formats to HVEC MKV files. Call the script with a trailing directory path and it will process the items in that location.
 
 *Process*
