@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.1.4 *See README.md for requirements*
+# Version 1.1.5 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -23,6 +23,15 @@ fi
 # Process various video formats
 find "$WORKINGDIRECTORY" -type f \( -iname "*.avc" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.MOV" -o -iname "*.wmv" -o -iname "*.asf" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.flv" -o -iname "*.3gp" \) -print0 | while IFS= read -r -d '' file
 do
+  # Extract base name without extension to compare
+  base_name="${file%.*}"
+
+  # Check if the file or its corresponding .tmp.mkv file is already being processed
+  if [[ "$file" == "$base_name.mkv" || "$file" == "$base_name.tmp.mkv" ]]; then
+    echo "Skipping $file as it is already being processed or is a temporary file."
+    continue
+  fi
+
   echo "Processing $file"
   
   # Check if the file already has HEVC video codec
@@ -58,7 +67,7 @@ do
     done <<< "$file_info"
 
     # Prepare the new file name for output with a temporary name but always with .mkv extension
-    temp_newfile="${file%.*}.tmp.mkv"
+    temp_newfile="${base_name}.tmp.mkv"
 
     echo "Converting video stream of $file to HEVC (H.265)..."
 
@@ -69,7 +78,7 @@ do
     if [ $? -eq 0 ]; then
       echo "Conversion successful, replacing the original file with the new one."
       rm "$file"
-      mv "$temp_newfile" "${file%.*}.mkv"
+      mv "$temp_newfile" "${base_name}.mkv"
 
     else
       echo "Conversion failed for $file. Original file remains unchanged."
