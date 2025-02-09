@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Version 1.1.5 *See README.md for requirements*
+# Version 1.2.0 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
 FFMPEG="/usr/bin"
+# Timeout if a tmp file never vanishes
+TIMEOUT=14400
 # -----------------------------------------------------------------------------------------------
 IFS=$'\n'
 
@@ -25,11 +27,26 @@ find "$WORKINGDIRECTORY" -type f \( -iname "*.avc" -o -iname "*.mkv" -o -iname "
 do
   # Extract base name without extension to compare
   base_name="${file%.*}"
-
-  # Check if the file or its corresponding .tmp.mkv file is already being processed
-  if [[ "$file" == "$base_name.mkv" || "$file" == "$base_name.tmp.mkv" ]]; then
-    echo "Skipping $file as it is already being processed or is a temporary file."
-    continue
+  # Construct the temporary file and original file paths
+  temp_file="${base_name}.tmp.${file##*.}"  # e.g., file.tmp.mkv
+  original_file="${base_name}.${file##*.}"  # e.g., file.mkv or file.mp4
+  
+  # Pause and check every 5 minutes if a temp file exists, another process is working already
+  if [[ -f "$temp_file" ]]; then
+    echo "Temporary file $temp_file exists. Pausing until it is removed or timeout occurs."
+    elapsed_time=0
+    while [[ -f "$temp_file" && $elapsed_time -lt $TIMEOUT ]]; do
+      sleep 300
+      ((elapsed_time+=300))
+    done
+    
+    # Check if we exited due to timeout
+    if [[ -f "$temp_file" ]]; then
+      echo "Timeout reached. Temporary file $temp_file still exists after 10 minutes. Exiting script."
+      exit 1  # Exit with an error status
+    else
+      echo "Temporary file $temp_file removed. Resuming processing."
+    fi
   fi
 
   echo "Processing $file"
@@ -72,7 +89,7 @@ do
     echo "Converting video stream of $file to HEVC (H.265)..."
 
     # Perform the conversion with ffmpeg (video to HEVC, audio and subtitle streams remain unchanged)
-    "$FFMPEG/ffmpeg" -i "$file" "${map_str[@]}" -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 28 "$temp_newfile"
+    "$FFMPEG/ffmpeg" -nostdin -i "$file" "${map_str[@]}" -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 28 "$temp_newfile"
 
     # Check if ffmpeg command succeeded
     if [ $? -eq 0 ]; then
