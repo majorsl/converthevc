@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.2.0 *See README.md for requirements*
+# Version 1.2.1 *See README.md for requirements*
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 # Path to ffmpeg
@@ -31,21 +31,24 @@ do
   temp_file="${base_name}.tmp.${file##*.}"  # e.g., file.tmp.mkv
   original_file="${base_name}.${file##*.}"  # e.g., file.mkv or file.mp4
   
-  # Pause and check every 5 minutes if a temp file exists, another process is working already
-  if [[ -f "$temp_file" ]]; then
-    echo "Temporary file $temp_file exists. Pausing until it is removed or timeout occurs."
+  # Check for any temp files
+  temp_files=$(find "$WORKINGDIRECTORY" -type f -name "*.tmp.*")
+  if [[ -n "$temp_files" ]]; then
+    echo "Temporary files found: $temp_files. Pausing until they are removed or timeout occurs."
     elapsed_time=0
-    while [[ -f "$temp_file" && $elapsed_time -lt $TIMEOUT ]]; do
+    while [[ -n "$temp_files" && $elapsed_time -lt $TIMEOUT ]]; do
       sleep 300
       ((elapsed_time+=300))
+      # Re-check for any remaining temporary files
+      temp_files=$(find "$WORKINGDIRECTORY" -type f -name "*.tmp.*")
     done
-    
-    # Check if we exited due to timeout
-    if [[ -f "$temp_file" ]]; then
-      echo "Timeout reached. Temporary file $temp_file still exists after 10 minutes. Exiting script."
-      exit 1  # Exit with an error status
+
+    # If any temp file still exists, exit with error
+    if [[ -n "$temp_files" ]]; then
+      echo "Timeout reached. Temporary files still exist after 10 minutes. Exiting script."
+      exit 1
     else
-      echo "Temporary file $temp_file removed. Resuming processing."
+      echo "Temporary files removed. Resuming processing."
     fi
   fi
 
@@ -55,6 +58,7 @@ do
   codec=$("$FFMPEG/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file")
   
   # Only convert if the video is not already HEVC
+  echo "Detected codec: '$codec'"
   if [[ "$codec" != "hevc" ]]; then
     # Get all stream info (codec_name, channels for audio, and resolution for video)
     file_info=$("$FFMPEG/ffprobe" -v error -select_streams a:v:s -show_entries stream=codec_name,channels,width,height -of default=nokey=1:noprint_wrappers=1 "$file")
