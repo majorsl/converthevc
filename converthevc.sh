@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Version 1.2.1 *See README.md for requirements*
+# Version 1.4.0 - Adds NVIDIA NVENC detection alongside VAAPI, uses libx265 as fallback
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
-# Path to ffmpeg
+# Path to ffmpeg binaries (without trailing slash)
 FFMPEG="/usr/bin"
-# Timeout if a tmp file never vanishes
-TIMEOUT=14400
+# Lockfile location (ensures only one instance of this script runs at a time)
+LOCKFILE="/tmp/convert_video.lock"
 # -----------------------------------------------------------------------------------------------
+
 IFS=$'\n'
+
+# Acquire a lock to prevent concurrent script runs
+exec 200>"$LOCKFILE"
+flock 200
 
 # Check if a directory is passed as an argument
 if [ -n "$1" ]; then
   WORKINGDIRECTORY="$1"
 else
-  echo "Please call the script with a trailing directory to process."
+  echo "Please call the script with a directory to process."
   exit 1
 fi
 
@@ -22,90 +27,87 @@ if [ ! -d "$WORKINGDIRECTORY" ]; then
   exit 1
 fi
 
-# Process various video formats
+# Process video files
 find "$WORKINGDIRECTORY" -type f \( -iname "*.avc" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.MOV" -o -iname "*.wmv" -o -iname "*.asf" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.flv" -o -iname "*.3gp" \) -print0 | while IFS= read -r -d '' file
 do
-  # Extract base name without extension to compare
-  base_name="${file%.*}"
-  # Construct the temporary file and original file paths
-  temp_file="${base_name}.tmp.${file##*.}"  # e.g., file.tmp.mkv
-  original_file="${base_name}.${file##*.}"  # e.g., file.mkv or file.mp4
-  
-  # Check for any temp files
-  temp_files=$(find "$WORKINGDIRECTORY" -type f -name "*.tmp.*")
-  if [[ -n "$temp_files" ]]; then
-    echo "Temporary files found: $temp_files. Pausing until they are removed or timeout occurs."
-    elapsed_time=0
-    while [[ -n "$temp_files" && $elapsed_time -lt $TIMEOUT ]]; do
-      sleep 300
-      ((elapsed_time+=300))
-      # Re-check for any remaining temporary files
-      temp_files=$(find "$WORKINGDIRECTORY" -type f -name "*.tmp.*")
-    done
-
-    # If any temp file still exists, exit with error
-    if [[ -n "$temp_files" ]]; then
-      echo "Timeout reached. Temporary files still exist after 10 minutes. Exiting script."
-      exit 1
-    else
-      echo "Temporary files removed. Resuming processing."
-    fi
+  # Skip .tmp.* files from interrupted conversions
+  if [[ "$file" == *.tmp.* ]]; then
+    echo "Skipping temporary file: $file"
+    continue
   fi
 
-  echo "Processing $file"
-  
-  # Check if the file already has HEVC video codec
-  codec=$("$FFMPEG/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file")
-  
-  # Only convert if the video is not already HEVC
-  echo "Detected codec: '$codec'"
-  if [[ "$codec" != "hevc" ]]; then
-    # Get all stream info (codec_name, channels for audio, and resolution for video)
-    file_info=$("$FFMPEG/ffprobe" -v error -select_streams a:v:s -show_entries stream=codec_name,channels,width,height -of default=nokey=1:noprint_wrappers=1 "$file")
-    
-    # Start constructing the map_str for video and subtitle streams
-    map_str=()
-    map_str+=("-map" "0:v")  # Always map video streams
+  base_name="${file%.*}"
+  temp_file="${base_name}.tmp.${file##*.}"
+  original_file="${base_name}.${file##*.}"
 
-    # Check if there are subtitle streams and map them if they exist
+  echo "Processing $file"
+
+  codec=$("$FFMPEG/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file")
+  echo "Detected codec: '$codec'"
+
+  if [[ "$codec" != "hevc" ]]; then
+    file_info=$("$FFMPEG/ffprobe" -v error -select_streams a:v:s -show_entries stream=codec_name,channels,width,height -of default=nokey=1:noprint_wrappers=1 "$file")
+
+    map_str=()
+    map_str+=("-map" "0:v")
+
     subtitle_streams=$("$FFMPEG/ffprobe" -v error -select_streams s -show_entries stream=index -of default=noprint_wrappers=1:nokey=1 "$file")
     if [ -n "$subtitle_streams" ]; then
-      map_str+=("-map" "0:s")  # Add subtitle streams only if they exist
+      map_str+=("-map" "0:s")
     fi
 
-    # Loop through each audio stream and add it to map_str
     track_num=0
     while read -r line; do
-      acodec=$(echo "$line" | cut -d' ' -f1)
-      achannels=$(echo "$line" | cut -d' ' -f2)
-      
-      # Add the current audio track to the map, ensuring it exists
-      map_str+=("-map" "0:a:$track_num?")  # Add '?' to ignore missing streams
-
-      # Increment track number for the next loop
+      map_str+=("-map" "0:a:$track_num?")
       ((track_num++))
-
     done <<< "$file_info"
 
-    # Prepare the new file name for output with a temporary name but always with .mkv extension
     temp_newfile="${base_name}.tmp.mkv"
 
-    echo "Converting video stream of $file to HEVC (H.265)..."
+    # Detect hardware acceleration
+    echo "Checking for hardware acceleration..."
+    use_nvenc=false
+    use_vaapi=false
 
-    # Perform the conversion with ffmpeg (video to HEVC, audio and subtitle streams remain unchanged)
-    "$FFMPEG/ffmpeg" -nostdin -i "$file" "${map_str[@]}" -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 28 "$temp_newfile"
+    if command -v nvidia-smi >/dev/null && "$FFMPEG/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -q hevc_nvenc; then
+      echo "NVENC is available. Using NVIDIA hardware acceleration for $file"
+      use_nvenc=true
+    elif "$FFMPEG/ffmpeg" -hwaccels 2>/dev/null | grep -q vaapi && \
+         test -e /dev/dri/renderD128 && \
+         "$FFMPEG/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -q hevc_vaapi; then
+      echo "VAAPI is available. Using Intel hardware acceleration for $file"
+      use_vaapi=true
+    else
+      echo "No supported hardware acceleration available. Falling back to software encoding."
+    fi
 
-    # Check if ffmpeg command succeeded
-    if [ $? -eq 0 ]; then
-      echo "Conversion successful, replacing the original file with the new one."
-      rm "$file"
-      mv "$temp_newfile" "${base_name}.mkv"
+    # Run appropriate encoding
+if $use_nvenc; then
+  "$FFMPEG/ffmpeg" -nostdin -i "$file" "${map_str[@]}" \
+    -vcodec hevc_nvenc -rc:v vbr -cq:v 28 -qmin:v 28 -qmax:v 28 -b:v 0 -preset p4 \
+    -acodec copy -scodec copy "$temp_newfile"
+
+    elif $use_vaapi; then
+      "$FFMPEG/ffmpeg" -nostdin -vaapi_device /dev/dri/renderD128 -hwaccel vaapi \
+        -i "$file" "${map_str[@]}" \
+        -vf 'format=nv12,hwupload' \
+        -vcodec hevc_vaapi -qp 25 -acodec copy -scodec copy "$temp_newfile"
 
     else
-      echo "Conversion failed for $file. Original file remains unchanged."
-      # Remove the temporary file if conversion failed
-      rm "$temp_newfile"
+      "$FFMPEG/ffmpeg" -nostdin -i "$file" "${map_str[@]}" \
+        -vcodec libx265 -acodec copy -scodec copy -preset fast -crf 25 "$temp_newfile"
     fi
+
+    # Handle result
+    if [ $? -eq 0 ]; then
+      echo "Conversion successful. Replacing original."
+      rm "$file"
+      mv "$temp_newfile" "${base_name}.mkv"
+    else
+      echo "Conversion failed for $file. Original file remains."
+      rm -f "$temp_newfile"
+    fi
+
   else
     echo "File $file already has HEVC video, skipping conversion."
   fi
