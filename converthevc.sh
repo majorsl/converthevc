@@ -10,7 +10,7 @@ IFS=$'\n'
 
 # Acquire a non-blocking exclusive lock using FD 200
 exec 200>"$LOCKFILE"
-flock -w 600 200 || {
+flock -w 21600 200 || {
   echo "Timeout waiting for lock (10 minutes). Another instance may be stuck. Exiting."
   exit 1
 }
