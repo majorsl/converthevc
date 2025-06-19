@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.4.2 - Reliable locking for both remote and local execution
+# Version 1.4.3 - Reliable locking for both remote and local execution
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 FFMPEG="/usr/bin"
@@ -10,8 +10,8 @@ IFS=$'\n'
 
 # Acquire a non-blocking exclusive lock using FD 200
 exec 200>"$LOCKFILE"
-flock -n 200 || {
-  echo "Another instance of this script is running. Exiting."
+flock -w 600 200 || {
+  echo "Timeout waiting for lock (10 minutes). Another instance may be stuck. Exiting."
   exit 1
 }
 
