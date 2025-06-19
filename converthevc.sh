@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Version 1.4.0 - Adds NVIDIA NVENC detection alongside VAAPI, uses libx265 as fallback
+# Version 1.4.2 - Reliable locking for both remote and local execution
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
-# Path to ffmpeg binaries (without trailing slash)
 FFMPEG="/usr/bin"
-# Lockfile location (ensures only one instance of this script runs at a time)
 LOCKFILE="/tmp/convert_video.lock"
 # -----------------------------------------------------------------------------------------------
 
 IFS=$'\n'
 
-# Acquire a lock to prevent concurrent script runs
+# Acquire a non-blocking exclusive lock using FD 200
 exec 200>"$LOCKFILE"
-flock 200
+flock -n 200 || {
+  echo "Another instance of this script is running. Exiting."
+  exit 1
+}
 
 # Check if a directory is passed as an argument
 if [ -n "$1" ]; then
