@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.5.0 - Adds summary reporting of conversions with status and size comparison
+# Version 1.5.1
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 FFMPEG="/usr/bin"
@@ -9,12 +9,14 @@ LOCKFILE="/tmp/convert_video.lock"
 IFS=$'\n'
 declare -a summary_lines
 
-# Acquire a non-blocking exclusive lock using FD 200
+# Acquire a lock with a 6-hour timeout
 exec 200>"$LOCKFILE"
+echo "🔒 Waiting for lock on $LOCKFILE ..."
 flock -w 21600 200 || {
-  echo "Timeout waiting for lock (6 hours). Another instance may be stuck. Exiting."
+  echo "⏱ Timeout waiting for lock (6 hours). Another instance may be stuck. Exiting."
   exit 1
 }
+echo "✅ Lock acquired"
 
 # Check if a directory is passed as an argument
 if [ -n "$1" ]; then
