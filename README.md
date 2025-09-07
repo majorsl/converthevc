@@ -19,3 +19,5 @@ When complete it will give a summary of its work.
  - 💾 Total space saved: 1.45 GB
 
 *Requires ffmpeg.
+
+Note: as of version 1.5.2 onward, the script now skips files encoded with AV1 since it is a superior compression format. Most devices since 2020 support this newer codec.
