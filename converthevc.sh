@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version 1.5.1
+# Version 1.5.2 - Added AV1 skip option
 
 # SET YOUR OPTIONS HERE -------------------------------------------------------------------------
 FFMPEG="/usr/bin"
@@ -50,7 +50,15 @@ while IFS= read -r -d '' file; do
 
   echo "   Detected codec: '$codec'"
 
-  if [[ "$codec" != "hevc" ]]; then
+  if [[ "$codec" == "hevc" ]]; then
+    echo "   Skipping: already HEVC"
+    summary_lines+=("🔁 $(basename "$file"): already HEVC, skipped")
+
+  elif [[ "$codec" == "av1" ]]; then
+    echo "   Skipping: already AV1"
+    summary_lines+=("🔁 $(basename "$file"): already AV1, skipped")
+
+  else
     file_info=$("$FFMPEG/ffprobe" -v error -select_streams a:v:s -show_entries stream=codec_name,channels,width,height -of default=nokey=1:noprint_wrappers=1 "$file")
 
     map_str=()
@@ -124,10 +132,6 @@ while IFS= read -r -d '' file; do
       rm -f "$temp_newfile"
       summary_lines+=("❌ $(basename "$file"): conversion failed")
     fi
-
-  else
-    echo "   Skipping: already HEVC"
-    summary_lines+=("🔁 $(basename "$file"): already HEVC, skipped")
   fi
 
 done < <(find "$WORKINGDIRECTORY" -type f \( -iname "*.avc" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.mp4" -o -iname "*.m4v" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.MOV" -o -iname "*.wmv" -o -iname "*.asf" -o -iname "*.mpg" -o -iname "*.mpeg" -o -iname "*.flv" -o -iname "*.3gp" \) -print0)
@@ -165,7 +169,7 @@ done
 # Final Summary
 echo -e "\n\033[1m📋 Totals:\033[0m"
 echo " - ✅ Converted successfully: $count_converted"
-echo " - 🔁 Skipped (already HEVC): $count_skipped"
+echo " - 🔁 Skipped (already HEVC/AV1): $count_skipped"
 echo " - ❌ Failed conversions: $count_failed"
 echo " - 📈 Increased file size: $count_grew"
 if [ $total_saved -gt 0 ]; then
